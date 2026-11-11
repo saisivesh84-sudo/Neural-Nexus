@@ -21,8 +21,8 @@ app.add_middleware(
     allowed_hosts=[
         "localhost",
         "127.0.0.1",
-        "neural-nexus-6fib.onrender.com"
-    ]
+        "neural-nexus-6lfb.onrender.com",
+    ],
 )
 
 
