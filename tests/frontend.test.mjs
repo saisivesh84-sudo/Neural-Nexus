@@ -1,0 +1,33 @@
+// Isolated DOM tests. These fixtures never ship through the application API.
+// Run with Node 22+: npm install; npm test
+import {JSDOM} from 'jsdom';
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const html=await fs.readFile(root+'static/index.html','utf8');
+const source=(await fs.readFile(root+'static/app.js','utf8')).replace("import { icon } from './icons.js';",'const icon = () => "";');
+const dom=new JSDOM(html,{url:'http://localhost:8000/#generate',runScripts:'outside-only'});
+const w=dom.window;let calls=0,copied='',downloaded=false,fail=false,resolvePending=null;
+const result={intent:'TEST FIXTURE: request data',drafts:[{subject:'<script>unsafe</script>',body:'First test draft.'},{subject:'Second test subject',body:'Second test draft.'}],improvements:['Test improvement'],suggestions:[],meta:{provider:'Google Gemini',model:'test-model',request_id:'test-only',elapsed_ms:123,total_tokens:50}};
+w.fetch=async url=>url==='/api/status'?{ok:true,json:async()=>({configured:true,model:'test-model',session_token:'test'})}:(calls++,resolvePending?await new Promise(r=>{resolvePending=r;}):{ok:!fail,json:async()=>fail?{error:{message:'Quota test error'}}:structuredClone(result)});
+w.navigator.clipboard={writeText:async s=>copied=s};w.URL.createObjectURL=()=>{downloaded=true;return 'blob:test'};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){};w.scrollTo=()=>{};
+await w.eval(`(async()=>{${source}; window.__test={route,generate,getState:()=>states,getHistory:()=>history};})()`);
+const $=s=>w.document.querySelector(s),tick=()=>new Promise(r=>setTimeout(r,10));
+$('#sample').click();assert.ok($('#text').value.length>100);
+$('#alternatives').value='2';$('#alternatives').dispatchEvent(new w.Event('input'));
+await w.__test.generate();assert.equal(calls,1);assert.equal($('#output script'),null);assert.ok($('.subject').textContent.includes('<script>'));
+$('[data-draft="1"]').click();assert.equal($('.body-text').textContent,'Second test draft.');assert.equal(calls,1);
+$('#copy').click();await tick();assert.ok(copied.includes('Second test subject'));assert.equal(calls,1);
+$('#download').click();assert.ok(downloaded);assert.equal(calls,1);
+$('#regenerate').click();await tick();assert.equal(calls,2);
+w.location.hash='home';await tick();assert.equal($('[data-history]')!==null,true);assert.equal(w.__test.getHistory().length,2);
+$('[data-history="0"]').click();await tick();assert.equal($('.body-text').textContent,'First test draft.');assert.equal(calls,2);
+fail=true;await w.__test.generate();assert.ok($('#form-error').textContent.includes('Quota'));assert.equal($('#submit').disabled,false);assert.equal($('.body-text').textContent,'First test draft.');
+$('#clear').click();assert.equal($('#text').value,'');assert.equal($('.body-text'),null);
+$('#sample').click();fail=false;resolvePending=true;const pending=w.__test.generate();await tick();assert.equal($('#submit').disabled,true);
+w.location.hash='tone';await tick();assert.equal($('#submit').disabled,true);resolvePending({ok:true,json:async()=>structuredClone(result)});await pending;assert.equal($('#submit').disabled,false);assert.equal($('.body-text'),null);
+w.location.hash='reply';await tick();$('#sample').click();assert.ok($('#intent').value.length>5);
+w.location.hash='home';await tick();$('#clear-history').click();assert.equal(w.__test.getHistory().length,0);
+console.log('PASS: sample, generation, escaping, alternatives, copy, download, regenerate, history, error recovery, clear, pending navigation, reply intent, history clear');
+dom.window.close();
