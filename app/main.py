@@ -16,7 +16,14 @@ service = AIService(settings)
 csrf_token = secrets.token_urlsafe(32)
 request_gate = threading.BoundedSemaphore(2)
 app = FastAPI(title='NEURAL NEXUS API', version='1.0.0', docs_url=None, redoc_url=None)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=[
+        "localhost",
+        "127.0.0.1",
+        "neural-nexus-6fib.onrender.com"
+    ]
+)
 
 
 @app.middleware('http')
